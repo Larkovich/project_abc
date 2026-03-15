@@ -12,6 +12,7 @@ import (
 
 	"project_abc/backend/internal/database"
 	"project_abc/backend/internal/models"
+	"project_abc/backend/internal/worker"
 )
 
 func main() {
@@ -46,7 +47,7 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:5173"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,
 	}))
@@ -72,6 +73,45 @@ func main() {
 			json.NewEncoder(w).Encode(appointments)
 		})
 
+		r.Get("/appointments/{id}", func(w http.ResponseWriter, r *http.Request) {
+			id := chi.URLParam(r, "id")
+			appt, err := database.GetAppointmentByID(db, id)
+			if err != nil {
+				slog.Error("failed to get appointment", "error", err)
+				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(appt)
+		})
+
+		r.Patch("/appointments/{id}/status", func(w http.ResponseWriter, r *http.Request) {
+			id := chi.URLParam(r, "id")
+
+			var body struct {
+				Status string `json:"status"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+				return
+			}
+
+			if body.Status != "confirmed" && body.Status != "cancelled" {
+				http.Error(w, `{"error":"status must be confirmed or cancelled"}`, http.StatusBadRequest)
+				return
+			}
+
+			if err := database.UpdateAppointmentStatus(db, id, body.Status); err != nil {
+				slog.Error("failed to update appointment status", "error", err)
+				http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": body.Status})
+		})
+
 		r.Post("/appointments", func(w http.ResponseWriter, r *http.Request) {
 			var appt models.Appointment
 			if err := json.NewDecoder(r.Body).Decode(&appt); err != nil {
@@ -90,6 +130,13 @@ func main() {
 			json.NewEncoder(w).Encode(map[string]string{"status": "created"})
 		})
 	})
+
+	// SMS Worker
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	worker.StartSMSReminderJob(db, frontendURL)
 
 	slog.Info("starting server", "port", port, "project", projectName)
 
