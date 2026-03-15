@@ -115,16 +115,43 @@ func GetScheduledAppointments(db *sql.DB) ([]models.Appointment, error) {
 	return appointments, rows.Err()
 }
 
-func CreateAppointment(db *sql.DB, appt models.Appointment) error {
-	query := `
-		INSERT INTO appointments (tenant_id, customer_id, appointment_time, service_name)
-		VALUES ($1, $2, $3, $4)
-	`
+const defaultTenantID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
 
-	_, err := db.Exec(query, appt.TenantID, appt.CustomerID, appt.AppointmentTime, appt.ServiceName)
+func CreateAppointmentWithCustomer(db *sql.DB, input models.CreateAppointmentInput) error {
+	tx, err := db.Begin()
 	if err != nil {
-		return fmt.Errorf("CreateAppointment: %w", err)
+		return fmt.Errorf("CreateAppointmentWithCustomer begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Find existing customer by phone for this tenant, or create a new one.
+	var customerID string
+	err = tx.QueryRow(
+		`SELECT id FROM customers WHERE phone = $1 AND tenant_id = $2`,
+		input.Phone, defaultTenantID,
+	).Scan(&customerID)
+
+	if err == sql.ErrNoRows {
+		err = tx.QueryRow(
+			`INSERT INTO customers (tenant_id, first_name, last_name, phone)
+			 VALUES ($1, $2, $3, $4)
+			 RETURNING id`,
+			defaultTenantID, input.FirstName, input.LastName, input.Phone,
+		).Scan(&customerID)
+	}
+	if err != nil {
+		return fmt.Errorf("CreateAppointmentWithCustomer customer: %w", err)
 	}
 
-	return nil
+	// Insert the appointment.
+	_, err = tx.Exec(
+		`INSERT INTO appointments (tenant_id, customer_id, appointment_time, service_name)
+		 VALUES ($1, $2, $3, $4)`,
+		defaultTenantID, customerID, input.AppointmentTime, input.ServiceName,
+	)
+	if err != nil {
+		return fmt.Errorf("CreateAppointmentWithCustomer appointment: %w", err)
+	}
+
+	return tx.Commit()
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -15,6 +16,22 @@ import (
 	"project_abc/backend/internal/worker"
 )
 
+func authMiddleware(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			header := r.Header.Get("Authorization")
+			token := strings.TrimPrefix(header, "Bearer ")
+
+			if token == "" || token == header || token != secret {
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func main() {
 	port := os.Getenv("API_PORT")
 	if port == "" {
@@ -24,6 +41,11 @@ func main() {
 	projectName := os.Getenv("PROJECT_NAME")
 	if projectName == "" {
 		projectName = "project_abc"
+	}
+
+	adminSecret := os.Getenv("ADMIN_SECRET")
+	if adminSecret == "" {
+		slog.Warn("ADMIN_SECRET is not set, admin routes will reject all requests")
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -61,18 +83,7 @@ func main() {
 	})
 
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/appointments", func(w http.ResponseWriter, r *http.Request) {
-			appointments, err := database.GetAllAppointments(db)
-			if err != nil {
-				slog.Error("failed to get appointments", "error", err)
-				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-				return
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(appointments)
-		})
-
+		// Public routes — used by Magic Link (no auth)
 		r.Get("/appointments/{id}", func(w http.ResponseWriter, r *http.Request) {
 			id := chi.URLParam(r, "id")
 			appt, err := database.GetAppointmentByID(db, id)
@@ -112,22 +123,45 @@ func main() {
 			json.NewEncoder(w).Encode(map[string]string{"status": body.Status})
 		})
 
-		r.Post("/appointments", func(w http.ResponseWriter, r *http.Request) {
-			var appt models.Appointment
-			if err := json.NewDecoder(r.Body).Decode(&appt); err != nil {
-				http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
-				return
-			}
+		// Protected routes — Dashboard (require ADMIN_SECRET)
+		r.Group(func(r chi.Router) {
+			r.Use(authMiddleware(adminSecret))
 
-			if err := database.CreateAppointment(db, appt); err != nil {
-				slog.Error("failed to create appointment", "error", err)
-				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-				return
-			}
+			r.Get("/appointments", func(w http.ResponseWriter, r *http.Request) {
+				appointments, err := database.GetAllAppointments(db)
+				if err != nil {
+					slog.Error("failed to get appointments", "error", err)
+					http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+					return
+				}
 
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]string{"status": "created"})
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(appointments)
+			})
+
+			r.Post("/appointments", func(w http.ResponseWriter, r *http.Request) {
+				var input models.CreateAppointmentInput
+				if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+					http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+					return
+				}
+
+				if input.FirstName == "" || input.LastName == "" || input.Phone == "" ||
+					input.ServiceName == "" || input.AppointmentTime.IsZero() {
+					http.Error(w, `{"error":"all fields are required"}`, http.StatusBadRequest)
+					return
+				}
+
+				if err := database.CreateAppointmentWithCustomer(db, input); err != nil {
+					slog.Error("failed to create appointment", "error", err)
+					http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+					return
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]string{"status": "created"})
+			})
 		})
 	})
 

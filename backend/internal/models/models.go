@@ -24,3 +24,11 @@ type Appointment struct {
 	CustomerFirstName string `json:"customer_first_name,omitempty"`
 	CustomerLastName  string `json:"customer_last_name,omitempty"`
 }
+
+type CreateAppointmentInput struct {
+	FirstName       string    `json:"first_name"`
+	LastName        string    `json:"last_name"`
+	Phone           string    `json:"phone"`
+	ServiceName     string    `json:"service_name"`
+	AppointmentTime time.Time `json:"appointment_time"`
+}
