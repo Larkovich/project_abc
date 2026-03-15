@@ -85,11 +85,17 @@ func GetScheduledAppointments(db *sql.DB) ([]models.Appointment, error) {
 		SELECT
 			a.id, a.tenant_id, a.customer_id,
 			a.appointment_time, a.status, a.service_name, a.created_at,
-			c.first_name, c.last_name
+			c.first_name, c.last_name, c.phone
 		FROM appointments a
 		JOIN customers c ON c.id = a.customer_id
 		WHERE a.status = 'scheduled'
 		  AND a.appointment_time > now()
+		  AND NOT EXISTS (
+		      SELECT 1 FROM notifications n
+		      WHERE n.appointment_id = a.id
+		        AND n.type = 'reminder'
+		        AND n.status = 'sent'
+		  )
 		ORDER BY a.appointment_time ASC
 	`
 
@@ -105,7 +111,7 @@ func GetScheduledAppointments(db *sql.DB) ([]models.Appointment, error) {
 		if err := rows.Scan(
 			&a.ID, &a.TenantID, &a.CustomerID,
 			&a.AppointmentTime, &a.Status, &a.ServiceName, &a.CreatedAt,
-			&a.CustomerFirstName, &a.CustomerLastName,
+			&a.CustomerFirstName, &a.CustomerLastName, &a.CustomerPhone,
 		); err != nil {
 			return nil, fmt.Errorf("GetScheduledAppointments scan: %w", err)
 		}
@@ -113,6 +119,20 @@ func GetScheduledAppointments(db *sql.DB) ([]models.Appointment, error) {
 	}
 
 	return appointments, rows.Err()
+}
+
+func CreateNotification(db *sql.DB, appointmentID string, notifType string, status string) error {
+	query := `
+		INSERT INTO notifications (appointment_id, type, status, scheduled_for, sent_at)
+		VALUES ($1, $2, $3, now(), now())
+	`
+
+	_, err := db.Exec(query, appointmentID, notifType, status)
+	if err != nil {
+		return fmt.Errorf("CreateNotification: %w", err)
+	}
+
+	return nil
 }
 
 const defaultTenantID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"

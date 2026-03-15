@@ -23,6 +23,7 @@ type Appointment struct {
 	// Joined from customers table
 	CustomerFirstName string `json:"customer_first_name,omitempty"`
 	CustomerLastName  string `json:"customer_last_name,omitempty"`
+	CustomerPhone     string `json:"customer_phone,omitempty"`
 }
 
 type CreateAppointmentInput struct {

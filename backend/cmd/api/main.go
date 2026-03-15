@@ -170,7 +170,11 @@ func main() {
 	if frontendURL == "" {
 		frontendURL = "http://localhost:5173"
 	}
-	worker.StartSMSReminderJob(db, frontendURL)
+	worker.StartSMSReminderJob(db, worker.SMSConfig{
+		APIToken:    os.Getenv("SMSAPI_TOKEN"),
+		Sender:      os.Getenv("SMS_SENDER"),
+		FrontendURL: frontendURL,
+	})
 
 	slog.Info("starting server", "port", port, "project", projectName)
 

@@ -16,14 +16,8 @@ services:
       context: ./backend
       target: prod
     restart: unless-stopped
-    environment:
-      PROJECT_NAME: ${PROJECT_NAME}
-      API_PORT: ${API_PORT}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
+    env_file:
+      - .env
     ports:
       - "${API_PORT}:${API_PORT}"
     depends_on:

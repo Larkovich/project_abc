@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
+
+const maxRetries = 5
+const retryInterval = 5 * time.Second
 
 func Connect() (*sql.DB, error) {
 	dsn := fmt.Sprintf(
@@ -24,8 +28,19 @@ func Connect() (*sql.DB, error) {
 		return nil, fmt.Errorf("sql.Open: %w", err)
 	}
 
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("db.Ping: %w", err)
+	for i := range maxRetries {
+		if err = db.Ping(); err == nil {
+			break
+		}
+		slog.Warn("database not ready, retrying...",
+			"attempt", i+1,
+			"max", maxRetries,
+			"error", err,
+		)
+		time.Sleep(retryInterval)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("db.Ping after %d retries: %w", maxRetries, err)
 	}
 
 	slog.Info("database connected",
