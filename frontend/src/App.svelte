@@ -1,89 +1,55 @@
 <script>
-  import svelteLogo from './assets/svelte.svg'
-  import viteLogo from './assets/vite.svg'
-  import heroImg from './assets/hero.png'
-  import Counter from './lib/Counter.svelte'
+  const API_URL = import.meta.env.VITE_API_URL;
+
+  let healthData = null;
+  let error = null;
+  let loading = false;
+
+  async function checkHealth() {
+    loading = true;
+    error = null;
+    healthData = null;
+
+    try {
+      const res = await fetch(`${API_URL}/health`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      healthData = await res.json();
+    } catch (err) {
+      error = err.message;
+    } finally {
+      loading = false;
+    }
+  }
 </script>
 
-<section id="center">
-  <div class="hero">
-    <img src={heroImg} class="base" width="170" height="179" alt="" />
-    <img src={svelteLogo} class="framework" alt="Svelte logo" />
-    <img src={viteLogo} class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/App.svelte</code> and save to test <code>HMR</code></p>
-  </div>
-  <Counter />
-</section>
+<main class="min-h-screen bg-gray-50 flex items-center justify-center">
+  <div class="bg-white shadow-lg rounded-xl p-8 max-w-md w-full text-center">
+    <h1 class="text-2xl font-bold text-gray-800 mb-2">project_abc</h1>
+    <p class="text-gray-500 mb-6">Booking & SMS notifications for the beauty industry</p>
 
-<div class="ticks"></div>
+    <button
+      on:click={checkHealth}
+      disabled={loading}
+      class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-medium px-6 py-2 rounded-lg transition-colors"
+    >
+      {loading ? 'Checking...' : 'Check Backend Health'}
+    </button>
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true">
-      <use href="/icons.svg#documentation-icon"></use>
-    </svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank" rel="noreferrer">
-          <img class="logo" src={viteLogo} alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://svelte.dev/" target="_blank" rel="noreferrer">
-          <img class="button-icon" src={svelteLogo} alt="" />
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true">
-      <use href="/icons.svg#social-icon"></use>
-    </svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li>
-        <a href="https://github.com/vitejs/vite" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#github-icon"></use>
-          </svg>
-          GitHub
-        </a>
-      </li>
-      <li>
-        <a href="https://chat.vite.dev/" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#discord-icon"></use>
-          </svg>
-          Discord
-        </a>
-      </li>
-      <li>
-        <a href="https://x.com/vite_js" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#x-icon"></use>
-          </svg>
-          X.com
-        </a>
-      </li>
-      <li>
-        <a href="https://bsky.app/profile/vite.dev" target="_blank" rel="noreferrer">
-          <svg class="button-icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#bluesky-icon"></use>
-          </svg>
-          Bluesky
-        </a>
-      </li>
-    </ul>
-  </div>
-</section>
+    {#if healthData}
+      <div class="mt-6 bg-green-50 border border-green-200 rounded-lg p-4 text-left">
+        <p class="text-sm font-semibold text-green-800 mb-2">Backend is reachable</p>
+        <div class="text-sm text-green-700 space-y-1">
+          <p><span class="font-medium">Status:</span> {healthData.status}</p>
+          <p><span class="font-medium">Project:</span> {healthData.project}</p>
+        </div>
+      </div>
+    {/if}
 
-<div class="ticks"></div>
-<section id="spacer"></section>
+    {#if error}
+      <div class="mt-6 bg-red-50 border border-red-200 rounded-lg p-4 text-left">
+        <p class="text-sm font-semibold text-red-800 mb-1">Connection failed</p>
+        <p class="text-sm text-red-600">{error}</p>
+      </div>
+    {/if}
+  </div>
+</main>
