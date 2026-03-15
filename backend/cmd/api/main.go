@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"project_abc/backend/internal/database"
+	"project_abc/backend/internal/models"
 )
 
 func main() {
@@ -55,6 +56,38 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{
 			"status":  "ok",
 			"project": projectName,
+		})
+	})
+
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/appointments", func(w http.ResponseWriter, r *http.Request) {
+			appointments, err := database.GetAllAppointments(db)
+			if err != nil {
+				slog.Error("failed to get appointments", "error", err)
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(appointments)
+		})
+
+		r.Post("/appointments", func(w http.ResponseWriter, r *http.Request) {
+			var appt models.Appointment
+			if err := json.NewDecoder(r.Body).Decode(&appt); err != nil {
+				http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+				return
+			}
+
+			if err := database.CreateAppointment(db, appt); err != nil {
+				slog.Error("failed to create appointment", "error", err)
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]string{"status": "created"})
 		})
 	})
 

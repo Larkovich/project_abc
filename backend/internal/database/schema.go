@@ -69,5 +69,52 @@ CREATE TABLE IF NOT EXISTS notifications (
 	}
 
 	slog.Info("database schema migrated")
+
+	if err := seed(db); err != nil {
+		return fmt.Errorf("seed: %w", err)
+	}
+
+	return nil
+}
+
+func seed(db *sql.DB) error {
+	// Only seed if the tenants table is empty.
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM tenants").Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		slog.Info("seed skipped, data already exists")
+		return nil
+	}
+
+	seedSQL := `
+WITH t AS (
+    INSERT INTO tenants (id, name, email, phone)
+    VALUES ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'Bella Beauty Studio', 'contact@bellastudio.com', '+48500100200')
+    RETURNING id
+),
+c1 AS (
+    INSERT INTO customers (id, tenant_id, first_name, last_name, phone)
+    VALUES ('b1eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', (SELECT id FROM t), 'Anna', 'Kowalska', '+48501111222')
+    RETURNING id
+),
+c2 AS (
+    INSERT INTO customers (id, tenant_id, first_name, last_name, phone)
+    VALUES ('b2eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', (SELECT id FROM t), 'Maria', 'Nowak', '+48502333444')
+    RETURNING id
+)
+INSERT INTO appointments (tenant_id, customer_id, appointment_time, status, service_name) VALUES
+    ((SELECT id FROM t), (SELECT id FROM c1), now() + interval '1 day',   'scheduled',  'Haircut & Styling'),
+    ((SELECT id FROM t), (SELECT id FROM c2), now() + interval '2 days',  'confirmed',  'Manicure'),
+    ((SELECT id FROM t), (SELECT id FROM c1), now() + interval '3 days',  'scheduled',  'Color & Highlights'),
+    ((SELECT id FROM t), (SELECT id FROM c2), now() - interval '1 day',   'completed',  'Facial Treatment');
+`
+
+	if _, err := db.Exec(seedSQL); err != nil {
+		return err
+	}
+
+	slog.Info("seed data inserted")
 	return nil
 }
